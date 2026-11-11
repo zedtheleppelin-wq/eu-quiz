@@ -558,7 +558,7 @@
       <span class="crest" role="img" aria-label="Schullogo"></span>
       <div>
         <h1>Gruppen einteilen</h1>
-        <p class="sub hint"><strong>Gruppenzahl</strong> einstellen, dann entweder <strong>Automatisch zuteilen</strong> klicken oder Farbe wählen und Plätze anklicken beziehungsweise überziehen. Rechtsklick markiert einen Platz als frei. Mit <strong>Anordnen</strong> lassen sich die Tische verschieben. Tasten: 1 bis 9 wählen die Farbe, 0 ist der Radierer, X der Frei-Stift.</p>
+        <p class="sub hint"><strong>Gruppenzahl</strong> einstellen, dann entweder <strong>Automatisch zuteilen</strong> klicken oder Farbe wählen und Plätze anklicken beziehungsweise überziehen. Rechtsklick markiert einen Platz als frei. Mit <strong>Anordnen</strong> lassen sich die Tische verschieben, ein Rechtsklick dreht den Tisch. Tasten: 1 bis 9 wählen die Farbe, 0 ist der Radierer, X der Frei-Stift.</p>
       </div>
     </header>
 
@@ -579,6 +579,7 @@
       <label class="paint-only"><input type="checkbox" id="whole"> Ganze Tische färben</label>
       <button class="btn primary paint-only" id="auto" type="button">Automatisch zuteilen</button>
       <button class="btn paint-only" id="clear" type="button">Farben leeren</button>
+      <button class="btn" id="clearAll" type="button" title="Entfernt alle Färbungen und ×-Markierungen, auch im Anordnen-Modus">Alle Färbungen löschen</button>
 
       <label class="arrange-only"><input type="checkbox" id="snap" checked> Am Raster einrasten</label>
       <button class="btn arrange-only" id="rot" type="button" disabled>Drehen</button>
@@ -1153,7 +1154,12 @@
       } else { rightVal = null; applySeat(s, tool); }
       return;
     }
-    if (e.button === 2) return;
+    if (e.button === 2) {
+      // Rechtsklick im Anordnen-Modus: Tisch auswählen und drehen
+      var rt = e.target.closest('.table');
+      if (rt) { select(+rt.getAttribute('data-id')); rotateSel(); }
+      return;
+    }
     var el = e.target.closest('.table');
     if (!el) { select(null); return; }
     var tb = byId(+el.getAttribute('data-id')); if (!tb) return;
@@ -1174,12 +1180,18 @@
       var rect = canvas.getBoundingClientRect(), u = rect.width / W, d = dimsR(drag.t.r);
       var x = fit((e.clientX - rect.left) / u - drag.offX, W - d.w);
       var y = fit((e.clientY - rect.top) / u - drag.offY, H - d.h);
-      if (x === drag.nx && y === drag.ny) return;
-      drag.nx = x; drag.ny = y;
-      if (x !== drag.ox || y !== drag.oy) drag.moved = true;
-      drag.bad = collides(drag.t, x, y, drag.t.r);
-      drag.el.style.setProperty('--x', x); drag.el.style.setProperty('--y', y);
-      drag.el.classList.toggle('bad', drag.bad);
+      if (x === drag.tx && y === drag.ty) return;
+      drag.tx = x; drag.ty = y;
+      // Gleiten: ist die Zielposition belegt, an Nachbarn entlanggleiten statt hängenzubleiben
+      var vx = drag.nx, vy = drag.ny, nx, ny;
+      if (!collides(drag.t, x, y, drag.t.r)) { nx = x; ny = y; }
+      else if (!collides(drag.t, x, vy, drag.t.r)) { nx = x; ny = vy; }
+      else if (!collides(drag.t, vx, y, drag.t.r)) { nx = vx; ny = y; }
+      else return;
+      drag.nx = nx; drag.ny = ny;
+      if (nx !== drag.ox || ny !== drag.oy) drag.moved = true;
+      drag.bad = false;
+      drag.el.style.setProperty('--x', nx); drag.el.style.setProperty('--y', ny);
       return;
     }
     if (!down) return;
@@ -1245,6 +1257,12 @@
     var before = snapshot();
     tables.forEach(function (t) { t.z = t.z.map(function (z) { return z === FREE ? FREE : -1; }); });
     commit(before); update();
+  });
+  document.getElementById('clearAll').addEventListener('click', function () {
+    var before = snapshot();
+    tables.forEach(function (t) { t.z = t.z.map(function () { return -1; }); });
+    commit(before); update();
+    flash('Alle Färbungen und Sperrmarkierungen gelöscht');
   });
   document.getElementById('reset').addEventListener('click', function () {
     var before = snapshot(), colors = {};
